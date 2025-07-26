@@ -125,6 +125,61 @@ where
     }
 }
 
+fn any_char(input: &str) -> ParseResult<char> {
+    match input.chars().next() {
+        Some(next) => Ok((&input[next.len_utf8()..], next)),
+        _ => Err(input),
+    }
+}
+
+fn pred<'a, P, A, F>(parser: P, predicate: F) -> impl Parser<'a, A>
+where
+    P: Parser<'a, A>,
+    F: Fn(&A) -> bool + 'a,
+{
+    move |input| {
+        if let Ok((next_input, value)) = parser.parse(input) {
+            if predicate(&value) {
+                return Ok((next_input, value));
+            }
+        }
+        Err(input)
+    }
+}
+
+fn whitespace_char<'a>() -> impl Parser<'a, char> {
+    pred(any_char, |c| c.is_whitespace())
+}
+
+fn space1<'a>() -> impl Parser<'a, Vec<char>> {
+    one_or_more(whitespace_char())
+}
+
+fn space0<'a>() -> impl Parser<'a, Vec<char>> {
+    zero_or_more(whitespace_char())
+}
+
+fn quoted_string<'a>() -> impl Parser<'a, String> {
+    map(
+        right(
+            literal_match("\""),
+            left(
+                zero_or_more(pred(any_char, |c| *c != '"')),
+                literal_match("\""),
+            ),
+        ),
+        |chars| chars.into_iter().collect(),
+    )
+}
+
+fn attribute_pair<'a>() -> impl Parser<'a, (String, String)> {
+    pair(non_literal, right(literal_match("="), quoted_string()))
+}
+
+fn attributes<'a>() -> impl Parser<'a, Vec<(String, String)>> {
+    zero_or_more(right(space1(), attribute_pair()))
+}
+
 fn main() {
     // Simple test: match "hello"
     let parser = literal_match("hello");
